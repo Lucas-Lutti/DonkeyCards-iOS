@@ -29,31 +29,6 @@ DonkeyCards é um aplicativo iOS para estudo de idiomas através de cartões de 
 - Xcode 13.0+
 - Swift 5.5+
 
-## 🚀 Como Executar
-
-1. Clone o repositório
-```bash
-git clone https://github.com/Lucas-Lutti/DonkeyCards-iOS.git
-```
-
-2. Abra o projeto no Xcode
-```bash
-cd DonkeyCards-iOS
-open DonkeyCards.xcodeproj
-```
-
-3. Instale as dependências
-- O projeto usa Swift Package Manager, as dependências serão baixadas automaticamente
-
-4. Configure o Firebase
-- Crie um projeto no [Firebase Console](https://console.firebase.google.com)
-- Baixe o arquivo `GoogleService-Info.plist`
-- Substitua o arquivo existente no projeto
-
-5. Execute o projeto
-- Selecione um simulador ou dispositivo
-- Pressione ⌘R para executar
-
 ## 📁 Estrutura do Projeto
 
 ```
@@ -88,32 +63,6 @@ DonkeyCards/
    - Os dados são sincronizados automaticamente com o Firebase
    - O aplicativo funciona offline, sincronizando quando a conexão estiver disponível
 
-## 🤝 Contribuindo
-
-1. Faça um Fork do projeto
-2. Crie uma Branch para sua Feature (`git checkout -b feature/AmazingFeature`)
-3. Faça o Commit das suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Faça o Push para a Branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
 ## 📝 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## 👥 Autores
-
-- **Lucas Lutti** - *Desenvolvimento inicial* - [Lucas-Lutti](https://github.com/Lucas-Lutti)
-
-## 🙏 Agradecimentos
-
-- Equipe do Firebase
-- Comunidade SwiftUI
-- Todos os contribuidores e testadores
-
-## 📞 Suporte
-
-Se você encontrar algum problema ou tiver sugestões, por favor abra uma issue no GitHub.
-
----
-
-⭐️ From [Lucas-Lutti](https://github.com/Lucas-Lutti) with ❤️ 
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes. 
