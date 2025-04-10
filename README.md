@@ -49,10 +49,9 @@ DonkeyCards/
    - Você pode pular o tutorial a qualquer momento
 
 2. **Navegar pelos Decks**:
-   - Deslize para a esquerda/direita para navegar entre os cartões
    - Toque no cartão para virá-lo e ver a resposta
-   - Deslize para cima para marcar como correto
-   - Deslize para baixo para marcar como incorreto
+   - Deslize para a direita para marcar como correto
+   - Deslize para a esquerda para marcar como incorreto
 
 3. **Gerenciar Decks**:
    - Acesse o menu lateral para filtrar decks por idioma
