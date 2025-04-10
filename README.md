@@ -1,23 +1,25 @@
 # 🃏 DonkeyCards iOS
 
-![DonkeyCards Logo](DonkeyCards/Assets.xcassets/LOGO.imageset/DonkeyCards_LOGO%20Background%20Removed.png)
+<div align="center">
+  <img src="DonkeyCards/Assets.xcassets/LOGO.imageset/DonkeyCards_LOGO%20Background%20Removed.png" alt="DonkeyCards Logo" width="200"/>
+</div>
 
-DonkeyCards é um aplicativo iOS moderno que traz a experiência do clássico jogo de cartas "Burro" para seu iPhone. Desenvolvido com SwiftUI e Firebase, oferece uma experiência multiplayer em tempo real com recursos modernos e uma interface intuitiva.
+DonkeyCards é um aplicativo iOS para estudo de idiomas através de cartões de memória (flashcards). Desenvolvido com SwiftUI e Firebase, o aplicativo permite que os usuários estudem vocabulário em diferentes idiomas e temas, com um sistema de acompanhamento de progresso e interface intuitiva.
 
 ## 🚀 Funcionalidades
 
-- **Multiplayer em Tempo Real**: Jogue com amigos em tempo real usando o Firebase
-- **Modo Offline**: Jogue contra a CPU quando estiver offline
-- **Sistema de Progresso**: Acompanhe seu progresso e desbloqueie conquistas
-- **Tutorial Interativo**: Aprenda a jogar com um tutorial guiado
-- **Personalização**: Escolha entre diferentes temas e personalizações
-- **Estatísticas**: Acompanhe suas estatísticas de jogo
-- **Modo Noturno**: Suporte completo a tema claro/escuro
+- **Decks de Cartões**: Organize seus estudos por idioma e tema
+- **Sistema de Progresso**: Acompanhe seu desempenho em cada deck
+- **Tutorial Interativo**: Aprenda a usar o aplicativo com um guia passo a passo
+- **Modo Offline**: Acesse seus decks mesmo sem conexão com a internet
+- **Sincronização com Firebase**: Mantenha seus dados atualizados em tempo real
+- **Interface Intuitiva**: Design moderno com gestos para navegar entre os cartões
+- **Tema Personalizado**: Interface com cores vibrantes e tema escuro
 
 ## 🛠 Tecnologias
 
 - SwiftUI
-- Firebase (Firestore, Authentication)
+- Firebase Firestore
 - Combine
 - Swift Package Manager
 
@@ -56,25 +58,35 @@ open DonkeyCards.xcodeproj
 
 ```
 DonkeyCards/
-├── Components/          # Componentes reutilizáveis
-├── Models/             # Modelos de dados
-├── Services/           # Serviços (Firebase, Game Logic)
-├── Utils/              # Utilitários e extensões
-├── Views/              # Telas principais
+├── Components/          # Componentes reutilizáveis (DeckDetailModal, TutorialOverlay)
+├── Models/             # Modelos de dados (Card, Deck)
+├── Services/           # Serviços (DataService, FirestoreService, ProgressManager)
+├── Utils/              # Utilitários (Theme, UserPreferences)
+├── ViewModels/         # ViewModels (MainViewModel)
+├── Views/              # Telas principais (MainView, CardView, SideMenuView)
 └── Resources/          # Recursos (imagens, sons)
 ```
 
-## 🎮 Como Jogar
+## 🎮 Como Usar
 
-1. Inicie o jogo
-2. Escolha entre modo online ou offline
-3. Se online:
-   - Crie ou entre em uma sala
-   - Aguarde outros jogadores
-4. Se offline:
-   - Escolha o número de jogadores CPU
-5. O jogo começará automaticamente
-6. Siga as instruções na tela para jogar
+1. **Iniciar o Aplicativo**:
+   - Na primeira execução, um tutorial interativo guiará você pelo aplicativo
+   - Você pode pular o tutorial a qualquer momento
+
+2. **Navegar pelos Decks**:
+   - Deslize para a esquerda/direita para navegar entre os cartões
+   - Toque no cartão para virá-lo e ver a resposta
+   - Deslize para cima para marcar como correto
+   - Deslize para baixo para marcar como incorreto
+
+3. **Gerenciar Decks**:
+   - Acesse o menu lateral para filtrar decks por idioma
+   - Visualize detalhes do deck atual
+   - Acompanhe seu progresso em cada deck
+
+4. **Sincronização**:
+   - Os dados são sincronizados automaticamente com o Firebase
+   - O aplicativo funciona offline, sincronizando quando a conexão estiver disponível
 
 ## 🤝 Contribuindo
 
