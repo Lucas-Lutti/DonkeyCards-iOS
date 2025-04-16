@@ -15,6 +15,7 @@ DonkeyCards é um aplicativo iOS para estudo de idiomas através de cartões de 
 - **Sincronização com Firebase**: Mantenha seus dados atualizados em tempo real
 - **Interface Intuitiva**: Design moderno com gestos para navegar entre os cartões
 - **Tema Personalizado**: Interface com cores vibrantes e tema escuro
+- **Sistema de Cache Inteligente**: Controle de atualizações para economizar dados e melhorar performance
 
 ## 🛠 Tecnologias
 
@@ -61,6 +62,26 @@ DonkeyCards/
 4. **Sincronização**:
    - Os dados são sincronizados automaticamente com o Firebase
    - O aplicativo funciona offline, sincronizando quando a conexão estiver disponível
+
+## 🔄 Sistema de Atualização de Dados
+
+O DonkeyCards implementa um sistema inteligente de atualização de dados para economizar consumo de rede e melhorar a performance:
+
+- **Atualização de Idiomas**: 
+  - Ao abrir o menu lateral, o aplicativo verifica se já passou 1 hora desde a última consulta de idiomas
+  - Só consulta o Firestore se o tempo mínimo tiver passado, caso contrário utiliza dados em cache
+
+- **Atualização de Temas e Cards**:
+  - Ao selecionar um tema, o aplicativo verifica se já passou 3 horas desde a última atualização
+  - Só consulta os cards do Firestore se o intervalo de 3 horas tiver passado
+  - Cards são armazenados por idioma no cache local para acesso rápido
+
+- **Persistência de Dados**:
+  - Todos os dados são salvos localmente utilizando UserDefaults
+  - O progresso de estudo é mantido mesmo se o aplicativo ficar offline
+  - A sincronização ocorre automaticamente quando necessário
+
+Este sistema garante que o aplicativo permaneça rápido e responsivo, enquanto mantém os dados atualizados de forma eficiente.
 
 ## 📝 Licença
 

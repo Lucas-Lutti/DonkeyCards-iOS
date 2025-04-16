@@ -6,6 +6,7 @@ struct SideMenuView: View {
     
     @State private var selectedLanguage: String?
     @State private var expandedLanguage: String?
+    @State private var lastUpdate: Date? = UserDefaults.standard.object(forKey: "lastLanguageUpdate") as? Date
     
     var body: some View {
         ZStack {
@@ -73,9 +74,49 @@ struct SideMenuView: View {
             }
         }
         .onAppear {
-            // Quando o menu aparecer, garantimos que os decks filtrados não afetam
-            // as opções disponíveis no menu
-            viewModel.ensureFullLanguageList()
+            // Verifica se já passou uma hora desde a última atualização
+            let oneHourAgo = Date().addingTimeInterval(-3600)
+            if lastUpdate == nil || lastUpdate! < oneHourAgo {
+                print("📱 [LOG] Atualizando idiomas do Firestore")
+                DataService.shared.getIdiomas(forceRefresh: true) { [weak viewModel] idiomas in
+                    guard let viewModel = viewModel else { return }
+                    
+                    // Filtra apenas os idiomas ativos
+                    let idiomasAtivos = idiomas.filter { $0.ativo }
+                    
+                    DispatchQueue.main.async {
+                        // Atualiza os idiomas no viewModel com apenas os idiomas ativos
+                        print("📱 [LOG] Atualizando lista de idiomas: \(idiomasAtivos.count) idiomas ativos")
+                        viewModel.idiomas = idiomasAtivos
+                        
+                        // Atualiza a última data de atualização
+                        lastUpdate = Date()
+                        UserDefaults.standard.set(lastUpdate, forKey: "lastLanguageUpdate")
+                        
+                        // Se tiver um idioma selecionado, verifica se ele ainda está ativo
+                        if let selectedIdioma = viewModel.selectedIdioma {
+                            if let updatedIdioma = idiomasAtivos.first(where: { $0.nome == selectedIdioma.nome }) {
+                                // O idioma selecionado ainda está ativo, mantenha-o
+                                viewModel.selectedIdioma = updatedIdioma
+                            } else if let firstIdioma = idiomasAtivos.first {
+                                // O idioma selecionado não está mais ativo, seleciona o primeiro ativo
+                                print("📱 [LOG] Idioma selecionado não está mais ativo, selecionando o primeiro disponível")
+                                viewModel.selectIdioma(firstIdioma)
+                            }
+                        } else if let firstIdioma = idiomasAtivos.first, viewModel.selectedIdioma == nil {
+                            // Se não tiver idioma selecionado, seleciona o primeiro ativo
+                            viewModel.selectIdioma(firstIdioma)
+                        }
+                        
+                        // Define o idioma expandido como o idioma atualmente selecionado
+                        if let selectedIdioma = viewModel.selectedIdioma {
+                            expandedLanguage = selectedIdioma.nome
+                        }
+                    }
+                }
+            } else {
+                print("📱 [LOG] Usando idiomas do cache")
+            }
         }
     }
     
@@ -135,23 +176,26 @@ struct SideMenuView: View {
     private var languageList: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(viewModel.availableLanguages, id: \.self) { language in
+                ForEach(viewModel.idiomas) { idioma in
                     VStack(alignment: .leading, spacing: 0) {
                         // Botão do idioma
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                if expandedLanguage == language {
+                                // Quando um idioma é clicado, expande ou colapsa o menu
+                                if expandedLanguage == idioma.nome {
                                     expandedLanguage = nil
                                 } else {
-                                    expandedLanguage = language
+                                    expandedLanguage = idioma.nome
+                                    // Apenas quando um idioma é expandido, seleciona-o e carrega os cards
+                                    viewModel.selectIdioma(idioma)
                                 }
                             }
                         }) {
                             HStack {
-                                Text(language)
+                                Text(idioma.nome)
                                     .font(.system(size: 18, weight: .semibold))
                                     .foregroundColor(
-                                        viewModel.selectedLanguage == language || expandedLanguage == language ? 
+                                        viewModel.selectedLanguage == idioma.nome || expandedLanguage == idioma.nome ? 
                                         AppTheme.accentColor : AppTheme.textColor
                                     )
                                 
@@ -159,7 +203,7 @@ struct SideMenuView: View {
                                 
                                 Image(systemName: "chevron.down")
                                     .foregroundColor(AppTheme.accentColor)
-                                    .rotationEffect(.degrees(expandedLanguage == language ? 0 : -90))
+                                    .rotationEffect(.degrees(expandedLanguage == idioma.nome ? 0 : -90))
                                     .animation(.spring(), value: expandedLanguage)
                             }
                             .padding(.vertical, 12)
@@ -167,7 +211,7 @@ struct SideMenuView: View {
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill(
-                                        viewModel.selectedLanguage == language || expandedLanguage == language ? 
+                                        viewModel.selectedLanguage == idioma.nome || expandedLanguage == idioma.nome ? 
                                         AppTheme.accentColor.opacity(0.1) : 
                                         Color.clear
                                     )
@@ -175,12 +219,15 @@ struct SideMenuView: View {
                         }
                         
                         // Lista de temas para o idioma
-                        if expandedLanguage == language {
+                        if expandedLanguage == idioma.nome {
                             VStack(alignment: .leading, spacing: 2) {
-                                ForEach(viewModel.themesForLanguage(language), id: \.self) { theme in
+                                // Primeiro loop apenas para temas regulares (não o "Todos")
+                                let regularThemes = viewModel.themesForLanguage(idioma.nome).filter { $0 != "Todos" }
+                                
+                                ForEach(regularThemes, id: \.self) { theme in
                                     Button(action: {
                                         withAnimation {
-                                            viewModel.filterDecks(byLanguage: language, byTheme: theme)
+                                            viewModel.filterDecks(byLanguage: idioma.nome, byTheme: theme)
                                             withAnimation(.spring()) {
                                                 isShowing = false
                                             }
@@ -190,7 +237,7 @@ struct SideMenuView: View {
                                             Text(theme)
                                                 .font(.system(size: 16, weight: .medium))
                                                 .foregroundColor(
-                                                    viewModel.selectedLanguage == language && 
+                                                    viewModel.selectedLanguage == idioma.nome && 
                                                     viewModel.selectedTheme == theme ? 
                                                     AppTheme.accentColor : AppTheme.textColor.opacity(0.8)
                                                 )
@@ -198,37 +245,50 @@ struct SideMenuView: View {
                                             
                                             Spacer()
                                             
-                                            let progress = viewModel.getProgressForDeck(language: language, theme: theme)
+                                            // Mostrar percentual de progresso
+                                            let progress = viewModel.getProgressForDeck(language: idioma.nome, theme: theme)
                                             if progress > 0 {
                                                 Text("\(Int(progress))%")
                                                     .font(.system(size: 14, weight: .medium))
                                                     .foregroundColor(AppTheme.accentColor.opacity(0.8))
+                                                    .padding(.trailing, 8)
                                             }
                                             
-                                            if viewModel.selectedLanguage == language && viewModel.selectedTheme == theme {
-                                                Circle()
-                                                    .fill(AppTheme.accentColor)
-                                                    .frame(width: 8, height: 8)
+                                            if viewModel.selectedLanguage == idioma.nome && viewModel.selectedTheme == theme {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(AppTheme.accentColor)
                                             }
                                         }
                                         .padding(.vertical, 10)
                                         .padding(.horizontal, 15)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .fill(
+                                                    viewModel.selectedLanguage == idioma.nome && 
+                                                    viewModel.selectedTheme == theme ? 
+                                                    AppTheme.accentColor.opacity(0.08) : 
+                                                    Color.clear
+                                                )
+                                        )
                                     }
                                     
-                                    if theme != viewModel.themesForLanguage(language).last {
+                                    if theme != regularThemes.last {
                                         Divider()
-                                            .background(AppTheme.primaryColor.opacity(0.1))
+                                            .background(AppTheme.accentColor.opacity(0.05))
                                             .padding(.horizontal, 15)
                                     }
                                 }
                                 
+                                // Divider para separar os temas individuais da opção "Todos"
                                 Divider()
-                                    .background(AppTheme.primaryColor.opacity(0.1))
+                                    .background(AppTheme.accentColor.opacity(0.1))
                                     .padding(.horizontal, 15)
+                                    .padding(.vertical, 5)
                                 
+                                // Opção para mostrar todos os temas do idioma
                                 Button(action: {
                                     withAnimation {
-                                        viewModel.filterDecks(byLanguage: language)
+                                        viewModel.filterDecks(byLanguage: idioma.nome, byTheme: "Todos")
                                         withAnimation(.spring()) {
                                             isShowing = false
                                         }
@@ -236,68 +296,82 @@ struct SideMenuView: View {
                                 }) {
                                     HStack {
                                         Text("Todos os temas")
-                                            .font(.system(size: 16, weight: .medium))
+                                            .font(.system(size: 16, weight: .semibold))
                                             .foregroundColor(
-                                                viewModel.selectedLanguage == language && 
-                                                viewModel.selectedTheme == nil ? 
+                                                viewModel.selectedLanguage == idioma.nome && 
+                                                viewModel.selectedTheme == "Todos" ? 
                                                 AppTheme.accentColor : AppTheme.textColor.opacity(0.8)
                                             )
+                                            .lineLimit(1)
                                         
                                         Spacer()
                                         
-                                        if viewModel.selectedLanguage == language && viewModel.selectedTheme == nil {
-                                            Image(systemName: "checkmark")
+                                        // Mostrar percentual de progresso para todos os temas
+                                        let progress = viewModel.getProgressForDeck(language: idioma.nome, theme: "Todos")
+                                        if progress > 0 {
+                                            Text("\(Int(progress))%")
+                                                .font(.system(size: 14, weight: .medium))
+                                                .foregroundColor(AppTheme.accentColor.opacity(0.8))
+                                                .padding(.trailing, 8)
+                                        }
+                                        
+                                        if viewModel.selectedLanguage == idioma.nome && viewModel.selectedTheme == "Todos" {
+                                            Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(AppTheme.accentColor)
                                         }
                                     }
                                     .padding(.vertical, 10)
                                     .padding(.horizontal, 15)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(
+                                                viewModel.selectedLanguage == idioma.nome && 
+                                                viewModel.selectedTheme == "Todos" ? 
+                                                AppTheme.accentColor.opacity(0.08) : 
+                                                Color.clear
+                                            )
+                                    )
                                 }
                             }
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(AppTheme.primaryColor.opacity(0.05))
-                            )
-                            .padding(.top, 5)
-                            .padding(.bottom, 10)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .padding(.leading, 15)
+                            .padding(.vertical, 5)
+                            .background(AppTheme.accentColor.opacity(0.03))
+                            .cornerRadius(8)
+                            .transition(.slide)
                         }
                     }
+                    
+                    if idioma.nome != viewModel.idiomas.last?.nome {
+                        Divider()
+                            .background(AppTheme.accentColor.opacity(0.1))
+                            .padding(.vertical, 5)
+                    }
+                }
+                
+                if viewModel.idiomas.isEmpty && !viewModel.isLoading {
+                    Text("Nenhum idioma disponível")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(AppTheme.textColor.opacity(0.6))
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                
+                if viewModel.isLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .tint(AppTheme.accentColor)
+                        Spacer()
+                    }
+                    .padding(.vertical, 20)
                 }
             }
-            .padding(.bottom, 20)
+            .padding(.vertical, 15)
         }
     }
     
     private var appInfo: some View {
         VStack(alignment: .center, spacing: 5) {
-            Button(action: {
-                if viewModel.canRefreshData {
-                    viewModel.refreshDecks()
-                    // Dar feedback tátil 
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                }
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
-                        .foregroundColor(viewModel.canRefreshData ? AppTheme.accentColor.opacity(0.6) : AppTheme.textColor.opacity(0.3))
-                    
-                    Text(viewModel.canRefreshData ? "Atualizar" : viewModel.timeUntilNextUpdateMessage)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(viewModel.canRefreshData ? AppTheme.accentColor.opacity(0.6) : AppTheme.textColor.opacity(0.3))
-                }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 8)
-                .background(
-                    Capsule()
-                        .fill(viewModel.canRefreshData ? AppTheme.accentColor.opacity(0.1) : AppTheme.textColor.opacity(0.05))
-                )
-            }
-            .disabled(!viewModel.canRefreshData)
-            .padding(.bottom, 10)
-            
             Text("DonkeyCards v1.0")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(AppTheme.textColor.opacity(0.6))
