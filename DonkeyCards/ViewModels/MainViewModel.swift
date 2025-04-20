@@ -20,36 +20,126 @@ class MainViewModel: ObservableObject {
     @Published var canRefreshData = false
     @Published var timeUntilNextUpdateMessage: String = ""
     
+    // Idiomas disponíveis do Firebase
+    @Published var idiomas: [Idioma] = []
+    @Published var selectedIdioma: Idioma?
+    
     private let dataService = DataService.shared
     private let progressManager = ProgressManager.shared
     private var cancellables = Set<AnyCancellable>()
     
+    // Chave para armazenar a última atualização do tema no UserDefaults
+    private let lastThemeUpdateKey = "lastThemeUpdate_"
+    
     init() {
-        loadDecks()
+        loadIdiomas()
     }
     
-    private func loadDecks() {
+    // MARK: - Carregamento de Idiomas
+    
+    private func loadIdiomas() {
+        print("📱 [LOG] Iniciando carregamento de idiomas...")
         isLoading = true
-        dataService.getDecks { [weak self] decks in
+        dataService.getIdiomas { [weak self] idiomas in
             guard let self = self else { return }
             DispatchQueue.main.async {
-                self.allDecks = decks
+                // Idiomas já vêm filtrados (apenas ativos) do DataService
+                self.idiomas = idiomas
+                print("📱 [LOG] Idiomas ativos carregados no ViewModel: \(idiomas.count)")
+                
+                // Seleciona automaticamente o primeiro idioma ativo e carrega seus cards
+                if let firstIdioma = idiomas.first {
+                    print("📱 [LOG] Selecionando primeiro idioma ativo: \(firstIdioma.nome)")
+                    self.selectedIdioma = firstIdioma
+                    self.selectedLanguage = firstIdioma.nome
+                    self.loadDecksForCurrentIdioma()
+                } else {
+                    print("📱 [LOG] Nenhum idioma ativo disponível")
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    func selectIdioma(_ idioma: Idioma) {
+        // Se o mesmo idioma já estiver selecionado, não faz nada
+        if selectedIdioma?.id == idioma.id {
+            print("📱 [LOG] Idioma \(idioma.nome) já está selecionado")
+            return
+        }
+        
+        print("📱 [LOG] Selecionando idioma: \(idioma.nome)")
+        selectedIdioma = idioma
+        selectedLanguage = idioma.nome
+        
+        // Quando um idioma é selecionado, carrega os decks desse idioma
+        loadDecksForCurrentIdioma()
+    }
+    
+    private func loadDecksForCurrentIdioma() {
+        guard let idioma = selectedIdioma else {
+            print("📱 [LOG] Tentativa de carregar decks sem idioma selecionado")
+            isLoading = false
+            return
+        }
+        
+        print("📱 [LOG] Tentando carregar decks para idioma: \(idioma.nome)")
+        
+        // Verifica se já temos decks carregados para este idioma
+        if !allDecks.isEmpty && allDecks.contains(where: { $0.idioma == idioma.nome }) {
+            // Se já temos decks para este idioma, apenas filtrar
+            let idiomaDecks = allDecks.filter { $0.idioma == idioma.nome }
+            print("📱 [LOG] Usando decks em cache para idioma \(idioma.nome): \(idiomaDecks.count) decks")
+            self.decks = idiomaDecks
+            
+            // Seleciona o primeiro deck do idioma se houver algum
+            if let firstDeck = decks.first {
+                print("📱 [LOG] Selecionando primeiro deck: \(firstDeck.nome)")
+                self.selectDeck(firstDeck)
+            }
+            
+            return
+        }
+        
+        print("📱 [LOG] Carregando decks do idioma \(idioma.nome) do Firebase...")
+        
+        // Se não temos os decks deste idioma, carrega do serviço
+        isLoading = true
+        dataService.getDecksForLanguage(idioma.nome) { [weak self] decks in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                // Adiciona os novos decks ao allDecks (sem substituir os existentes de outros idiomas)
+                let existingDecks = self.allDecks.filter { $0.idioma != idioma.nome }
+                self.allDecks = existingDecks + decks
+                
+                // Define os decks atuais como apenas os do idioma selecionado
                 self.decks = decks
                 
+                print("📱 [LOG] Decks carregados do Firebase para idioma \(idioma.nome): \(decks.count) decks")
+                
                 if let firstDeck = decks.first {
+                    print("📱 [LOG] Selecionando primeiro deck: \(firstDeck.nome)")
                     self.selectDeck(firstDeck)
+                } else {
+                    print("📱 [LOG] Nenhum deck encontrado para idioma \(idioma.nome)")
                 }
+                
                 self.isLoading = false
                 self.updateRefreshStatus()
             }
         }
     }
     
+    // MARK: - Gerenciamento de Decks
+    
     func selectDeck(_ deck: Deck) {
         // Se já estiver no mesmo deck, apenas mantenha o estado atual
         if currentDeck?.storageId == deck.storageId {
+            print("📱 [LOG] Deck já selecionado: \(deck.nome)")
             return
         }
+        
+        print("📱 [LOG] Selecionando deck: \(deck.nome) com \(deck.cards.count) cards")
         
         // Se já há um deck selecionado, salva o índice atual antes de trocar
         if let currentDeck = currentDeck {
@@ -71,6 +161,7 @@ class MainViewModel: ObservableObject {
         // Se o deck estiver concluído, definimos o índice para o último card
         // para manter a consistência visual com a barra de progresso completa
         if isDeckConcluido {
+            print("📱 [LOG] Deck \(deck.nome) está concluído")
             currentCardIndex = max(0, min(currentCardIndex, deck.cards.count - 1))
         }
         
@@ -99,34 +190,87 @@ class MainViewModel: ObservableObject {
     }
     
     func filterDecks(byLanguage language: String? = nil, byTheme theme: String? = nil) {
+        print("📱 [LOG] Aplicando filtro - Idioma: \(language ?? "todos"), Tema: \(theme ?? "todos")")
         selectedLanguage = language
         selectedTheme = theme
         isLoading = true
         
-        DispatchQueue.main.async {
-            var filteredDecks = self.allDecks
+        // Se tivermos um idioma selecionado
+        if let language = language {
+            // Verifica se precisamos carregar os decks para este idioma
+            let languageDecks = allDecks.filter { $0.idioma == language }
             
-            if let language = language, let theme = theme {
-                filteredDecks = self.allDecks.filter { $0.idioma == language && $0.tema == theme }
-            } else if let language = language {
-                filteredDecks = self.allDecks.filter { $0.idioma == language }
-            } else if let theme = theme {
-                filteredDecks = self.allDecks.filter { $0.tema == theme }
+            // Verifica se já passou 3 horas desde a última atualização dos cards para este tema
+            let updateKey = lastThemeUpdateKey + language + (theme ?? "")
+            let shouldUpdate = shouldUpdateTheme(key: updateKey)
+            
+            // Se já temos os decks para este idioma e não precisamos atualizar
+            if !languageDecks.isEmpty && !shouldUpdate {
+                print("📱 [LOG] Usando decks em cache para filtro - encontrados \(languageDecks.count) decks")
+                applyThemeFilter(languageDecks, theme: theme)
+                return
             }
             
-            self.decks = filteredDecks
+            print("📱 [LOG] Carregando decks do Firebase para filtro - idioma: \(language)")
+            // Se não temos os decks para este idioma ou precisamos atualizar, carrega-os
+            dataService.getDecksForLanguage(language) { [weak self] decks in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    // Adiciona os novos decks ao allDecks
+                    let existingDecks = self.allDecks.filter { $0.idioma != language }
+                    self.allDecks = existingDecks + decks
+                    
+                    print("📱 [LOG] Decks carregados para filtro: \(decks.count)")
+                    
+                    // Atualiza o timestamp da última atualização
+                    UserDefaults.standard.set(Date(), forKey: updateKey)
+                    
+                    // Aplica o filtro de tema se necessário
+                    self.applyThemeFilter(decks, theme: theme)
+                }
+            }
+        } else {
+            // Se não tivermos idioma selecionado, usa todos os decks
+            print("📱 [LOG] Usando todos os decks (\(allDecks.count)) sem filtro de idioma")
+            decks = allDecks
             
-            if let firstDeck = self.decks.first {
-                self.selectDeck(firstDeck)
-            } else {
-                self.currentDeck = nil
-                self.currentCardIndex = 0
-                self.correctCount = 0
-                self.incorrectCount = 0
-                self.currentDeckProgress = nil
+            if let theme = theme {
+                // Filtra pelo tema
+                print("📱 [LOG] Aplicando filtro apenas por tema: \(theme)")
+                decks = decks.filter { $0.tema == theme }
+                print("📱 [LOG] Resultado do filtro por tema: \(decks.count) decks")
             }
             
-            self.isLoading = false
+            updateSelectedDeck()
+            isLoading = false
+        }
+    }
+    
+    private func applyThemeFilter(_ sourceDecks: [Deck], theme: String?) {
+        if let theme = theme {
+            // Filtra pelo tema
+            print("📱 [LOG] Aplicando filtro de tema: \(theme) a \(sourceDecks.count) decks")
+            decks = sourceDecks.filter { $0.tema == theme }
+            print("📱 [LOG] Resultado após filtro de tema: \(decks.count) decks")
+        } else {
+            // Sem filtro de tema
+            print("📱 [LOG] Sem filtro de tema, usando todos os \(sourceDecks.count) decks")
+            decks = sourceDecks
+        }
+        
+        updateSelectedDeck()
+        isLoading = false
+    }
+    
+    private func updateSelectedDeck() {
+        if let firstDeck = decks.first {
+            selectDeck(firstDeck)
+        } else {
+            currentDeck = nil
+            currentCardIndex = 0
+            correctCount = 0
+            incorrectCount = 0
+            currentDeckProgress = nil
         }
     }
     
@@ -260,10 +404,8 @@ class MainViewModel: ObservableObject {
     }
     
     var availableLanguages: [String] {
-        get {
-            // Usar allDecks em vez de decks para mostrar todos os idiomas disponíveis
-            return Array(Set(allDecks.map { $0.idioma })).sorted()
-        }
+        // Retorna os nomes dos idiomas disponíveis do Firebase
+        return idiomas.map { $0.nome }.sorted()
     }
     
     func themesForLanguage(_ language: String) -> [String] {
@@ -271,7 +413,15 @@ class MainViewModel: ObservableObject {
         let themes = allDecks
             .filter { $0.idioma == language }
             .map { $0.tema }
-        return Array(Set(themes)).sorted()
+            .filter { $0 != "Todos" } // Remove todos os "Todos" inicialmente
+        
+        // Cria um array com os temas únicos e ordenados
+        var uniqueThemes = Array(Set(themes)).sorted()
+        
+        // Adiciona "Todos" apenas uma vez no final
+        uniqueThemes.append("Todos")
+        
+        return uniqueThemes
     }
     
     func getProgressForDeck(language: String, theme: String) -> Double {
@@ -351,16 +501,16 @@ class MainViewModel: ObservableObject {
     
     // Método para garantir que a lista de idiomas e temas não seja restringida pela filtragem
     func ensureFullLanguageList() {
-        // Não precisamos modificar a filtragem atual dos decks,
-        // apenas garantir que o allDecks esteja carregado e atualizado
-        if allDecks.isEmpty && !isLoading {
-            loadDecks()
+        // Apenas garante que a lista de idiomas esteja carregada
+        if idiomas.isEmpty && !isLoading {
+            loadIdiomas()
         }
+        // Não carrega automaticamente os decks
     }
     
     // Método para forçar a recarga dos decks do Firestore
     func refreshDecks() {
-        print("Atualizando decks...")
+        print("📱 [LOG] Iniciando atualização forçada dos dados...")
         isLoadingData = true
         
         // Verifica se pode atualizar
@@ -368,30 +518,75 @@ class MainViewModel: ObservableObject {
             let hours = Int(remainingTime) / 3600
             let minutes = Int(remainingTime) % 3600 / 60
             timeUntilNextUpdateMessage = "Próxima atualização disponível em \(hours)h \(minutes)min"
+            print("📱 [LOG] Atualização não permitida ainda. Próxima em: \(hours)h \(minutes)min")
             canRefreshData = false
             isLoadingData = false
             return
         }
         
-        DataService.shared.getDecks(forceRefresh: true) { [weak self] decks in
+        print("📱 [LOG] Atualizando idiomas do Firebase...")
+        
+        // Recarrega apenas os idiomas e o idioma selecionado
+        dataService.getIdiomas(forceRefresh: true) { [weak self] idiomas in
             guard let self = self else { return }
-            self.allDecks = decks
             
-            // Aplica os filtros existentes
-            if let language = selectedLanguage {
-                self.allDecks = self.allDecks.filter { $0.idioma == language }
-            }
-            if let theme = selectedTheme {
-                self.allDecks = self.allDecks.filter { $0.tema == theme }
-            }
+            print("📱 [LOG] Idiomas atualizados: \(idiomas.count)")
             
-            self.isLoadingData = false
-            self.canRefreshData = false
-            self.timeUntilNextUpdateMessage = "Dados atualizados com sucesso!"
-            
-            // Agenda a próxima verificação
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                self.updateRefreshStatus()
+            DispatchQueue.main.async {
+                self.idiomas = idiomas
+                
+                // Se tem um idioma selecionado, recarrega seus decks
+                if let selectedIdioma = self.selectedIdioma {
+                    print("📱 [LOG] Atualizando decks para idioma: \(selectedIdioma.nome)")
+                    
+                    self.dataService.getDecksForLanguage(selectedIdioma.nome) { [weak self] decks in
+                        guard let self = self else { return }
+                        
+                        print("📱 [LOG] Decks atualizados para idioma \(selectedIdioma.nome): \(decks.count) decks")
+                        
+                        DispatchQueue.main.async {
+                            // Substitui os decks do idioma atual no allDecks
+                            let otherDecks = self.allDecks.filter { $0.idioma != selectedIdioma.nome }
+                            self.allDecks = otherDecks + decks
+                            
+                            // Atualiza os decks visíveis
+                            if let theme = self.selectedTheme {
+                                print("📱 [LOG] Aplicando filtro de tema: \(theme)")
+                                self.decks = decks.filter { $0.tema == theme }
+                            } else {
+                                self.decks = decks
+                            }
+                            
+                            // Seleciona um deck se necessário
+                            if self.currentDeck == nil, let firstDeck = self.decks.first {
+                                print("📱 [LOG] Selecionando primeiro deck: \(firstDeck.nome)")
+                                self.selectDeck(firstDeck)
+                            }
+                            
+                            print("📱 [LOG] Atualização concluída com sucesso")
+                            
+                            self.isLoadingData = false
+                            self.canRefreshData = false
+                            self.timeUntilNextUpdateMessage = "Dados atualizados com sucesso!"
+                            
+                            // Agenda a próxima verificação
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                self.updateRefreshStatus()
+                            }
+                        }
+                    }
+                } else {
+                    print("📱 [LOG] Nenhum idioma selecionado para atualizar decks")
+                    
+                    self.isLoadingData = false
+                    self.canRefreshData = false
+                    self.timeUntilNextUpdateMessage = "Dados atualizados com sucesso!"
+                    
+                    // Agenda a próxima verificação
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        self.updateRefreshStatus()
+                    }
+                }
             }
         }
     }
@@ -411,6 +606,16 @@ class MainViewModel: ObservableObject {
             timeUntilNextUpdateMessage = "Atualização disponível"
             canRefreshData = true
         }
+    }
+    
+    // Método para verificar se deve atualizar os cards de um tema específico
+    private func shouldUpdateTheme(key: String) -> Bool {
+        if let lastUpdate = UserDefaults.standard.object(forKey: key) as? Date {
+            // Verifica se já passou 3 horas desde a última atualização
+            let threeHoursAgo = Date().addingTimeInterval(-10800) // 3 horas em segundos
+            return lastUpdate < threeHoursAgo
+        }
+        return true // Se nunca atualizou, deve atualizar
     }
 } 
 

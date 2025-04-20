@@ -13,8 +13,80 @@ class FirestoreService {
         // Usar o valor máximo para cache - 100MB
         settings.cacheSizeBytes = 104857600
         db.settings = settings
+    }
+    
+    // MARK: - Operações com Idiomas
+    
+    func fetchIdiomas(completion: @escaping ([Idioma]?, Error?) -> Void) {
+        fetchIdiomas(forceRefresh: false, completion: completion)
+    }
+    
+    func fetchIdiomas(forceRefresh: Bool, completion: @escaping ([Idioma]?, Error?) -> Void) {
+        print("📑 [LOG] Iniciando consulta de idiomas no Firestore...")
         
-        print("🔥 Firestore inicializado com projeto: \(db.app.options.projectID ?? "Desconhecido")")
+        // Verificar se a configuração está correta
+        guard let projectID = db.app.options.projectID, !projectID.isEmpty else {
+            print("❌ [LOG] Erro: Configuração do Firebase inválida")
+            completion(nil, NSError(domain: "FirestoreService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Configuração do Firebase inválida"]))
+            return
+        }
+        
+        // Configurar a consulta - usar getDocuments(source:) para forçar atualização se necessário
+        let source: FirestoreSource = forceRefresh ? .server : .default
+        print("🔍 [LOG] Consultando coleção 'idiomas' (forceRefresh: \(forceRefresh))")
+        
+        // Tentar buscar documentos na coleção 'idiomas'
+        db.collection("idiomas").getDocuments(source: source) { snapshot, error in
+            if let error = error {
+                print("❌ [LOG] Erro ao buscar idiomas: \(error.localizedDescription)")
+                completion([], error)
+                return
+            }
+            
+            guard let snapshot = snapshot else {
+                print("⚠️ [LOG] Snapshot nulo recebido na consulta de idiomas")
+                completion([], nil)
+                return
+            }
+            
+            if snapshot.documents.isEmpty {
+                print("⚠️ [LOG] Coleção 'idiomas' vazia")
+                completion([], nil)
+                return
+            }
+            
+            print("📊 [LOG] Documentos encontrados na coleção 'idiomas': \(snapshot.documents.count)")
+            
+            let idiomas = snapshot.documents.compactMap { document -> Idioma? in
+                do {
+                    // Usar o método de conversão manual
+                    let data = document.data()
+                    guard let nome = data["nome"] as? String,
+                          let ativo = data["ativo"] as? Bool else {
+                        throw NSError(domain: "FirestoreService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Dados inválidos ou incompletos"])
+                    }
+                    
+                    var dataCriacao: Date = Date()
+                    if let timestamp = data["dataCriacao"] as? Timestamp {
+                        dataCriacao = timestamp.dateValue()
+                    }
+                    
+                    let idioma = Idioma(id: document.documentID, 
+                                      nome: nome, 
+                                      ativo: ativo, 
+                                      dataCriacao: dataCriacao)
+                    
+                    print("🔤 [LOG] Idioma encontrado: \(nome) (ativo: \(ativo))")
+                    return idioma
+                } catch {
+                    print("❌ [LOG] Erro ao converter documento \(document.documentID): \(error)")
+                    return nil
+                }
+            }
+            
+            print("✅ [LOG] Total de idiomas carregados: \(idiomas.count)")
+            completion(idiomas, nil)
+        }
     }
     
     // MARK: - Operações com Cards
@@ -24,16 +96,12 @@ class FirestoreService {
     }
     
     func fetchCards(forceRefresh: Bool, completion: @escaping ([Card]?, Error?) -> Void) {
-        print("🔥 Iniciando busca de cards no Firestore...")
-        
         // Verificar se a configuração está correta
         guard let projectID = db.app.options.projectID, !projectID.isEmpty else {
-            print("🔥❌ ERRO: Configuração do Firebase inválida. ProjectID ausente.")
+            print("Erro: Configuração do Firebase inválida")
             completion(nil, NSError(domain: "FirestoreService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Configuração do Firebase inválida"]))
             return
         }
-        
-        print("🔥 Tentando acessar a coleção 'cartoes' no projeto \(projectID)")
         
         // Configurar a consulta - usar getDocuments(source:) para forçar atualização se necessário
         let source: FirestoreSource = forceRefresh ? .server : .default
@@ -43,42 +111,24 @@ class FirestoreService {
             guard let self = self else { return }
             
             if let error = error {
-                print("🔥❌ ERRO ao buscar cards: \(error.localizedDescription)")
-                print("🔥 Detalhes do erro: \(String(describing: error))")
-                
-                // Tentar criar a coleção se ela não existir
-                print("🔥 A coleção pode não existir, verificando outras alternativas...")
+                print("Erro ao buscar cards: \(error.localizedDescription)")
                 completion([], error)
                 return
             }
             
             guard let snapshot = snapshot else {
-                print("🔥❌ ERRO: Snapshot é nil, mas nenhum erro foi reportado")
                 completion([], nil)
                 return
             }
-            
-            print("🔥 Conexão com Firestore bem-sucedida")
-            print("🔥 Documentos encontrados no Firestore: \(snapshot.documents.count)")
             
             if snapshot.documents.isEmpty {
-                print("🔥⚠️ Coleção 'cartoes' existe mas está vazia")
                 completion([], nil)
                 return
-            }
-            
-            // Para fins de depuração, vamos mostrar os IDs dos documentos
-            print("🔥 IDs dos documentos encontrados: \(snapshot.documents.map { $0.documentID }.joined(separator: ", "))")
-            
-            // Para fins de depuração, vamos mostrar os dados brutos do primeiro documento
-            if let firstDoc = snapshot.documents.first {
-                print("🔥 Amostra de dados do primeiro documento (\(firstDoc.documentID)):")
-                print(firstDoc.data())
             }
             
             let cards = snapshot.documents.compactMap { document -> Card? in
                 do {
-                    // Usar o método de conversão manual em vez do data(as:)
+                    // Usar o método de conversão manual
                     let data = document.data()
                     guard let palavra = data["palavra"] as? String,
                           let resposta = data["resposta"] as? String,
@@ -93,26 +143,12 @@ class FirestoreService {
                                     idioma: idioma, 
                                     tema: tema)
                     
-                    print("🔥 Card carregado com sucesso: \(card.palavra) (\(card.idioma) - \(card.tema))")
                     return card
                 } catch {
-                    print("🔥❌ ERRO ao converter documento \(document.documentID):")
-                    print("🔥 Dados brutos: \(document.data())")
-                    print("🔥 Erro: \(error)")
-                    
-                    // Vamos tentar uma conversão manual para debug
-                    let data = document.data()
-                    print("🔥 Tentando conversão manual:")
-                    print("🔥 - palavra: \(data["palavra"] as? String ?? "ausente")")
-                    print("🔥 - resposta: \(data["resposta"] as? String ?? "ausente")")
-                    print("🔥 - idioma: \(data["idioma"] as? String ?? "ausente")")
-                    print("🔥 - tema: \(data["tema"] as? String ?? "ausente")")
-                    
                     return nil
                 }
             }
             
-            print("🔥 Total de cards carregados com sucesso: \(cards.count) de \(snapshot.documents.count) documentos")
             completion(cards, nil)
         }
     }
@@ -124,48 +160,37 @@ class FirestoreService {
     }
     
     func getDecksFromFirestore(forceRefresh: Bool, completion: @escaping ([Deck]?, Error?) -> Void) {
-        print("🔥 Iniciando busca de decks do Firestore...")
-        
         fetchCards(forceRefresh: forceRefresh) { cards, error in
             if let error = error {
-                print("🔥❌ ERRO ao buscar cards para criar decks: \(error.localizedDescription)")
+                print("Erro ao buscar cards para criar decks: \(error.localizedDescription)")
                 completion(nil, error)
                 return
             }
             
             guard let cards = cards, !cards.isEmpty else {
-                print("🔥⚠️ Nenhum card encontrado para criar decks")
                 completion([], nil)
                 return
             }
             
-            print("🔥 Criando decks a partir de \(cards.count) cards")
-            
             let idiomas = Set(cards.map { $0.idioma })
-            print("🔥 Idiomas encontrados: \(idiomas)")
-            
             var decks: [Deck] = []
             
             for idioma in idiomas {
                 let idiomaCards = cards.filter { $0.idioma == idioma }
                 let temas = Set(idiomaCards.map { $0.tema })
-                print("🔥 Temas para idioma \(idioma): \(temas)")
                 
                 for tema in temas {
                     let temaCards = idiomaCards.filter { $0.tema == tema }
                     let deckName = "\(tema) (\(idioma))"
                     let deck = Deck(nome: deckName, idioma: idioma, tema: tema, cards: temaCards)
-                    print("🔥 Criado deck: \(deckName) com \(temaCards.count) cards")
                     decks.append(deck)
                 }
                 
                 // Também adiciona um deck com todos os cards do idioma
                 let allDeck = Deck(nome: "Todos (\(idioma))", idioma: idioma, tema: "Todos", cards: idiomaCards)
-                print("🔥 Criado deck consolidado: Todos (\(idioma)) com \(idiomaCards.count) cards")
                 decks.append(allDeck)
             }
             
-            print("🔥 Total de \(decks.count) decks criados com sucesso")
             completion(decks, nil)
         }
     }
