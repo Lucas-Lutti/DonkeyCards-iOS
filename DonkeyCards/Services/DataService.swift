@@ -33,16 +33,16 @@ class DataService {
                 let decoder = JSONDecoder()
                 let idiomas = try decoder.decode([Idioma].self, from: idiomasData)
                 self.cachedIdiomas = idiomas
-                print("📱 [LOG] Idiomas carregados do cache local: \(idiomas.count)")
+                print("📱 [CACHE] Idiomas carregados do cache local: \(idiomas.count)")
             } catch {
-                print("❌ [LOG] Erro ao decodificar idiomas do cache: \(error)")
+                print("❌ [CACHE] Erro ao decodificar idiomas do cache: \(error)")
             }
         }
         
         // Carrega o timestamp da última atualização
         if let lastUpdate = defaults.object(forKey: lastUpdateKey) as? Date {
             self.lastUpdateTimestamp = lastUpdate
-            print("📱 [LOG] Última atualização: \(lastUpdate)")
+            print("📱 [CACHE] Última atualização: \(lastUpdate)")
         }
     }
     
@@ -132,7 +132,7 @@ class DataService {
     func getIdiomas(forceRefresh: Bool, completion: @escaping ([Idioma]) -> Void) {
         // Se já tivermos dados em cache e não estamos forçando atualização, retorne-os
         if !cachedIdiomas.isEmpty && !forceRefresh {
-            print("🔄 [LOG] Usando idiomas em cache: \(cachedIdiomas.count) idiomas")
+            print("🔄 [CACHE] Usando idiomas em cache: \(cachedIdiomas.count) idiomas")
             completion(cachedIdiomas)
             return
         }
@@ -141,20 +141,20 @@ class DataService {
         if !canUpdateNow() && !forceRefresh {
             // Se temos cache, use-o
             if !cachedIdiomas.isEmpty {
-                print("🔄 [LOG] Usando idiomas em cache (atualização recente): \(cachedIdiomas.count) idiomas")
+                print("🔄 [CACHE] Usando idiomas em cache (atualização recente): \(cachedIdiomas.count) idiomas")
                 completion(cachedIdiomas)
                 return
             }
         }
         
-        print("🔍 [LOG] Consultando idiomas no Firebase...")
+        print("🔥 [FIREBASE] Consultando idiomas no Firebase...")
         
         // Busca novos dados do Firestore
         FirestoreService.shared.fetchIdiomas(forceRefresh: forceRefresh) { [weak self] idiomas, error in
             guard let self = self else { return }
             
             if let error = error {
-                print("❌ [LOG] Erro ao buscar idiomas: \(error.localizedDescription)")
+                print("❌ [FIREBASE] Erro ao buscar idiomas: \(error.localizedDescription)")
                 completion([])
                 return
             }
@@ -170,11 +170,11 @@ class DataService {
                 
                 // Filtra apenas idiomas ativos
                 let idiomasAtivos = idiomas.filter { $0.ativo }
-                print("✅ [LOG] Idiomas carregados do Firebase: \(idiomasAtivos.count) ativos de \(idiomas.count) total")
+                print("✅ [FIREBASE] Idiomas carregados do Firebase: \(idiomasAtivos.count) ativos de \(idiomas.count) total")
                 
                 completion(idiomasAtivos)
             } else {
-                print("⚠️ [LOG] Nenhum idioma recebido do Firestore")
+                print("⚠️ [FIREBASE] Nenhum idioma recebido do Firestore")
                 completion([])
             }
         }
@@ -189,6 +189,7 @@ class DataService {
     func getDecks(forceRefresh: Bool, completion: @escaping ([Deck]) -> Void) {
         // Se já tivermos dados em cache e não estamos forçando atualização, retorne-os
         if !cachedDecks.isEmpty && !forceRefresh {
+            print("🔄 [CACHE] Usando decks em cache")
             completion(cachedDecks)
             return
         }
@@ -197,17 +198,20 @@ class DataService {
         if !canUpdateNow() && !forceRefresh {
             // Se temos cache, use-o
             if !cachedDecks.isEmpty {
+                print("🔄 [CACHE] Usando decks em cache (atualização recente)")
                 completion(cachedDecks)
                 return
             }
         }
+        
+        print("🔥 [FIREBASE] Buscando decks do Firestore...")
         
         // Busca novos dados do Firestore
         FirestoreService.shared.getDecksFromFirestore(forceRefresh: forceRefresh) { [weak self] decks, error in
             guard let self = self else { return }
             
             if let error = error {
-                print("⚠️ Erro ao buscar decks: \(error.localizedDescription)")
+                print("❌ [FIREBASE] Erro ao buscar decks: \(error.localizedDescription)")
                 completion([])
                 return
             }
@@ -217,10 +221,10 @@ class DataService {
                 self.cachedDecks = decks
                 // Atualiza o timestamp
                 self.lastUpdateTimestamp = Date()
-                
+                print("✅ [FIREBASE] Decks carregados com sucesso: \(decks.count) decks")
                 completion(decks)
             } else {
-                print("⚠️ Nenhum deck recebido do Firestore")
+                print("⚠️ [FIREBASE] Nenhum deck recebido do Firestore")
                 completion([])
             }
         }
@@ -232,7 +236,7 @@ class DataService {
         // Verifica se já temos os decks deste idioma no cache de memória
         let cachedLanguageDecks = cachedDecks.filter { $0.idioma == language }
         if !cachedLanguageDecks.isEmpty {
-            print("🔄 [LOG] Usando decks em cache de memória para idioma \(language): \(cachedLanguageDecks.count) decks")
+            print("🔄 [CACHE] Usando decks em cache de memória para idioma \(language): \(cachedLanguageDecks.count) decks")
             completion(cachedLanguageDecks)
             return
         }
@@ -246,7 +250,7 @@ class DataService {
             let existingDecks = self.cachedDecks.filter { $0.idioma != language }
             self.cachedDecks = existingDecks + decks
             
-            print("🔄 [LOG] Usando cards do cache local para idioma \(language): \(decks.count) decks")
+            print("🔄 [CACHE] Usando cards do cache local para idioma \(language): \(decks.count) decks")
             completion(decks)
             
             // Se não precisamos atualizar agora, usa apenas o cache
@@ -255,7 +259,7 @@ class DataService {
             }
             
             // Se chegou aqui, vamos fazer uma atualização em segundo plano
-            print("🔄 [LOG] Atualizando cards em segundo plano para idioma \(language)")
+            print("🔥 [FIREBASE] Atualizando cards em segundo plano para idioma \(language)")
             fetchCardsFromFirebase(forLanguage: language) { _ in 
                 // Atualização silenciosa concluída
             }
@@ -268,7 +272,7 @@ class DataService {
     }
     
     private func fetchCardsFromFirebase(forLanguage language: String, completion: @escaping ([Deck]) -> Void) {
-        print("🔍 [LOG] Consultando cards para idioma \(language) no Firebase...")
+        print("🔥 [FIREBASE] Consultando cards para idioma \(language) no Firebase...")
         
         // Consulta Firebase apenas para cards do idioma específico
         let db = Firestore.firestore()
@@ -279,18 +283,18 @@ class DataService {
             guard let self = self else { return }
                 
             if let error = error {
-                print("❌ [LOG] Erro ao buscar cards: \(error.localizedDescription)")
+                print("❌ [FIREBASE] Erro ao buscar cards: \(error.localizedDescription)")
                 completion([])
                 return
             }
             
             guard let snapshot = snapshot else {
-                print("⚠️ [LOG] Snapshot vazio ao buscar cards para idioma \(language)")
+                print("⚠️ [FIREBASE] Snapshot vazio ao buscar cards para idioma \(language)")
                 completion([])
                 return
             }
             
-            print("📋 [LOG] Cards encontrados para idioma \(language): \(snapshot.documents.count)")
+            print("🔥 [FIREBASE] Cards encontrados para idioma \(language): \(snapshot.documents.count)")
             
             let cards = snapshot.documents.compactMap { document -> Card? in
                 do {
@@ -311,12 +315,12 @@ class DataService {
                     
                     return card
                 } catch {
-                    print("❌ [LOG] Erro ao converter documento: \(error)")
+                    print("❌ [FIREBASE] Erro ao converter documento: \(error)")
                     return nil
                 }
             }
             
-            print("🃏 [LOG] Cards convertidos com sucesso: \(cards.count) de \(snapshot.documents.count)")
+            print("✅ [FIREBASE] Cards convertidos com sucesso: \(cards.count) de \(snapshot.documents.count)")
             
             // Salva os cards no cache local
             self.saveCardsToCache(cards: cards, forLanguage: language)
@@ -330,7 +334,7 @@ class DataService {
             // Depois adiciona os novos
             self.cachedDecks.append(contentsOf: decks)
             
-            print("✅ [LOG] Decks criados para idioma \(language): \(decks.count) decks")
+            print("✅ [FIREBASE] Decks criados para idioma \(language): \(decks.count) decks")
             completion(decks)
         }
     }

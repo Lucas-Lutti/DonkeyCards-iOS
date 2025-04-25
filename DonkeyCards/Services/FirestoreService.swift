@@ -1,4 +1,5 @@
 import Foundation
+import Firebase
 import FirebaseFirestore
 
 class FirestoreService {
@@ -15,6 +16,178 @@ class FirestoreService {
         db.settings = settings
     }
     
+    // MARK: - User Management
+    
+    func createUser(user: UserModel, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = user.id else {
+            completion(.failure(NSError(domain: "FirestoreService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID do usuário não encontrado"])))
+            return
+        }
+        
+        // Convertendo manualmente o UserModel para um dicionário
+        let userData: [String: Any] = [
+            "username": user.username,
+            "profileImageURL": user.profileImageURL as Any,
+            "gold": user.gold,
+            "isFull": user.isFull,
+            "settings": user.settings
+        ]
+        
+        db.collection("users").document(userId).setData(userData) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
+    func getUser(userId: String, completion: @escaping (Result<UserModel?, Error>) -> Void) {
+        db.collection("users").document(userId).getDocument { document, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let document = document, document.exists else {
+                completion(.success(nil))
+                return
+            }
+            
+            // Convertendo manualmente o documento para UserModel
+            let data = document.data() ?? [:]
+            let username = data["username"] as? String ?? ""
+            let profileImageURL = data["profileImageURL"] as? String
+            let gold = data["gold"] as? Int ?? 0
+            let isFull = data["isFull"] as? Bool ?? false
+            let settings = data["settings"] as? [String: Bool] ?? [:]
+            
+            let user = UserModel(
+                id: userId,
+                username: username,
+                profileImageURL: profileImageURL,
+                gold: gold,
+                isFull: isFull
+            )
+            
+            // Adicionar settings manualmente
+            var userWithSettings = user
+            userWithSettings.settings = settings
+            
+            completion(.success(userWithSettings))
+        }
+    }
+    
+    func updateUser(user: UserModel, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let userId = user.id else {
+            completion(.failure(NSError(domain: "FirestoreService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID do usuário não encontrado"])))
+            return
+        }
+        
+        // Convertendo manualmente o UserModel para um dicionário
+        let userData: [String: Any] = [
+            "username": user.username,
+            "profileImageURL": user.profileImageURL as Any,
+            "gold": user.gold,
+            "isFull": user.isFull,
+            "settings": user.settings
+        ]
+        
+        db.collection("users").document(userId).setData(userData, merge: true) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
+    func deleteUser(userId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        db.collection("users").document(userId).delete { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
+    // MARK: - Deck Management
+    
+    func saveDeck(userId: String, deck: [String: Any], completion: @escaping (Result<String, Error>) -> Void) {
+        let deckRef = db.collection("users").document(userId).collection("decks").document()
+        
+        var deckData = deck
+        deckData["id"] = deckRef.documentID
+        deckData["createdAt"] = FieldValue.serverTimestamp()
+        
+        deckRef.setData(deckData) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(deckRef.documentID))
+            }
+        }
+    }
+    
+    func getDecks(userId: String, completion: @escaping (Result<[[String: Any]], Error>) -> Void) {
+        db.collection("users").document(userId).collection("decks")
+            .order(by: "createdAt", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    completion(.success([]))
+                    return
+                }
+                
+                let decks = documents.compactMap { document -> [String: Any]? in
+                    var deck = document.data()
+                    deck["id"] = document.documentID
+                    return deck
+                }
+                
+                completion(.success(decks))
+            }
+    }
+    
+    func deleteDeck(userId: String, deckId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        db.collection("users").document(userId).collection("decks").document(deckId).delete { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
+    // MARK: - Card Management
+    
+    func getCards(completion: @escaping (Result<[[String: Any]], Error>) -> Void) {
+        db.collection("cards").getDocuments { snapshot, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let documents = snapshot?.documents else {
+                completion(.success([]))
+                return
+            }
+            
+            let cards = documents.compactMap { document -> [String: Any]? in
+                var card = document.data()
+                card["id"] = document.documentID
+                return card
+            }
+            
+            completion(.success(cards))
+        }
+    }
+    
     // MARK: - Operações com Idiomas
     
     func fetchIdiomas(completion: @escaping ([Idioma]?, Error?) -> Void) {
@@ -22,40 +195,40 @@ class FirestoreService {
     }
     
     func fetchIdiomas(forceRefresh: Bool, completion: @escaping ([Idioma]?, Error?) -> Void) {
-        print("📑 [LOG] Iniciando consulta de idiomas no Firestore...")
+        print("🔥 [FIREBASE] Iniciando consulta de idiomas no Firestore...")
         
         // Verificar se a configuração está correta
         guard let projectID = db.app.options.projectID, !projectID.isEmpty else {
-            print("❌ [LOG] Erro: Configuração do Firebase inválida")
+            print("❌ [FIREBASE] Erro: Configuração do Firebase inválida")
             completion(nil, NSError(domain: "FirestoreService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Configuração do Firebase inválida"]))
             return
         }
         
         // Configurar a consulta - usar getDocuments(source:) para forçar atualização se necessário
         let source: FirestoreSource = forceRefresh ? .server : .default
-        print("🔍 [LOG] Consultando coleção 'idiomas' (forceRefresh: \(forceRefresh))")
+        print("🔥 [FIREBASE] Consultando coleção 'idiomas' (forceRefresh: \(forceRefresh))")
         
         // Tentar buscar documentos na coleção 'idiomas'
         db.collection("idiomas").getDocuments(source: source) { snapshot, error in
             if let error = error {
-                print("❌ [LOG] Erro ao buscar idiomas: \(error.localizedDescription)")
+                print("❌ [FIREBASE] Erro ao buscar idiomas: \(error.localizedDescription)")
                 completion([], error)
                 return
             }
             
             guard let snapshot = snapshot else {
-                print("⚠️ [LOG] Snapshot nulo recebido na consulta de idiomas")
+                print("⚠️ [FIREBASE] Snapshot nulo recebido na consulta de idiomas")
                 completion([], nil)
                 return
             }
             
             if snapshot.documents.isEmpty {
-                print("⚠️ [LOG] Coleção 'idiomas' vazia")
+                print("⚠️ [FIREBASE] Coleção 'idiomas' vazia")
                 completion([], nil)
                 return
             }
             
-            print("📊 [LOG] Documentos encontrados na coleção 'idiomas': \(snapshot.documents.count)")
+            print("🔥 [FIREBASE] Documentos encontrados na coleção 'idiomas': \(snapshot.documents.count)")
             
             let idiomas = snapshot.documents.compactMap { document -> Idioma? in
                 do {
@@ -76,15 +249,15 @@ class FirestoreService {
                                       ativo: ativo, 
                                       dataCriacao: dataCriacao)
                     
-                    print("🔤 [LOG] Idioma encontrado: \(nome) (ativo: \(ativo))")
+                    print("🔥 [FIREBASE] Idioma encontrado: \(nome) (ativo: \(ativo))")
                     return idioma
                 } catch {
-                    print("❌ [LOG] Erro ao converter documento \(document.documentID): \(error)")
+                    print("❌ [FIREBASE] Erro ao converter documento \(document.documentID): \(error)")
                     return nil
                 }
             }
             
-            print("✅ [LOG] Total de idiomas carregados: \(idiomas.count)")
+            print("✅ [FIREBASE] Total de idiomas carregados: \(idiomas.count)")
             completion(idiomas, nil)
         }
     }
@@ -96,35 +269,23 @@ class FirestoreService {
     }
     
     func fetchCards(forceRefresh: Bool, completion: @escaping ([Card]?, Error?) -> Void) {
-        // Verificar se a configuração está correta
-        guard let projectID = db.app.options.projectID, !projectID.isEmpty else {
-            print("Erro: Configuração do Firebase inválida")
-            completion(nil, NSError(domain: "FirestoreService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Configuração do Firebase inválida"]))
-            return
-        }
+        print("🔥 [FIREBASE] Iniciando busca de cards...")
         
-        // Configurar a consulta - usar getDocuments(source:) para forçar atualização se necessário
         let source: FirestoreSource = forceRefresh ? .server : .default
-        
-        // Tentar buscar documentos na coleção 'cartoes'
-        db.collection("cartoes").getDocuments(source: source) { [weak self] snapshot, error in
-            guard let self = self else { return }
-            
+        db.collection("cartoes").getDocuments(source: source) { snapshot, error in
             if let error = error {
-                print("Erro ao buscar cards: \(error.localizedDescription)")
-                completion([], error)
+                print("❌ [FIREBASE] Erro ao buscar cards: \(error.localizedDescription)")
+                completion(nil, error)
                 return
             }
             
             guard let snapshot = snapshot else {
-                completion([], nil)
+                print("⚠️ [FIREBASE] Snapshot nulo recebido na consulta de cards")
+                completion(nil, nil)
                 return
             }
             
-            if snapshot.documents.isEmpty {
-                completion([], nil)
-                return
-            }
+            print("🔥 [FIREBASE] Processando \(snapshot.documents.count) cards do Firestore")
             
             let cards = snapshot.documents.compactMap { document -> Card? in
                 do {
@@ -145,10 +306,12 @@ class FirestoreService {
                     
                     return card
                 } catch {
+                    print("❌ [FIREBASE] Erro ao converter card: \(error)")
                     return nil
                 }
             }
             
+            print("✅ [FIREBASE] Total de cards carregados: \(cards.count)")
             completion(cards, nil)
         }
     }
@@ -160,17 +323,21 @@ class FirestoreService {
     }
     
     func getDecksFromFirestore(forceRefresh: Bool, completion: @escaping ([Deck]?, Error?) -> Void) {
+        print("🔥 [FIREBASE] Iniciando busca de decks...")
         fetchCards(forceRefresh: forceRefresh) { cards, error in
             if let error = error {
-                print("Erro ao buscar cards para criar decks: \(error.localizedDescription)")
+                print("❌ [FIREBASE] Erro ao buscar cards para criar decks: \(error.localizedDescription)")
                 completion(nil, error)
                 return
             }
             
             guard let cards = cards, !cards.isEmpty else {
+                print("⚠️ [FIREBASE] Nenhum card encontrado para criar decks")
                 completion([], nil)
                 return
             }
+            
+            print("🔥 [FIREBASE] Criando decks a partir de \(cards.count) cards")
             
             let idiomas = Set(cards.map { $0.idioma })
             var decks: [Deck] = []
@@ -191,6 +358,7 @@ class FirestoreService {
                 decks.append(allDeck)
             }
             
+            print("✅ [FIREBASE] Total de decks criados: \(decks.count)")
             completion(decks, nil)
         }
     }
