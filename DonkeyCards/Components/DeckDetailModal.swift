@@ -157,16 +157,18 @@ struct DeckDetailModal: View {
         .background(AppTheme.backgroundColor)
         .cornerRadius(20)
         .frame(maxWidth: UIScreen.main.bounds.width - 40, maxHeight: UIScreen.main.bounds.height * 0.8)
-        .alert("Confirmar reinício", isPresented: $isShowingResetConfirmation) {
-            Button("Cancelar", role: .cancel) { }
-            Button("Reiniciar", role: .destructive) {
-                viewModel.resetDeck()
-                withAnimation {
-                    isShowing = false
-                }
-            }
-        } message: {
-            Text("Tem certeza que deseja reiniciar este deck? Todo o progresso será perdido.")
+        .alert(isPresented: $isShowingResetConfirmation) {
+            Alert(
+                title: Text("Confirmar reinício"),
+                message: Text("Tem certeza que deseja reiniciar este deck? Todo o progresso será perdido."),
+                primaryButton: .destructive(Text("Reiniciar")) {
+                    viewModel.resetDeck()
+                    withAnimation {
+                        isShowing = false
+                    }
+                },
+                secondaryButton: .cancel(Text("Cancelar"))
+            )
         }
     }
     

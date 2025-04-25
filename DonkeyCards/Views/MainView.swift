@@ -2,10 +2,13 @@ import SwiftUI
 
 struct MainView: View {
     @StateObject private var viewModel = MainViewModel()
+    @EnvironmentObject private var authService: AuthService
     @State private var isShowingMenu = false
     @State private var isShowingDeckDetail = false
     @State private var isShowingTutorial = !UserPreferences.shared.hasCompletedTutorial
     @State private var isShowingResetConfirmation = false
+    @State private var isShowingProfileView = false
+    @State private var isShowingLoginView = false
     
     var body: some View {
         ZStack {
@@ -148,13 +151,31 @@ struct MainView: View {
         }
         .background(Color.clear)
         .preferredColorScheme(.dark)
-        .alert("Confirmar reinício", isPresented: $isShowingResetConfirmation) {
-            Button("Cancelar", role: .cancel) { }
-            Button("Reiniciar", role: .destructive) {
-                viewModel.resetDeck()
+        .alert(isPresented: $isShowingResetConfirmation) {
+            Alert(
+                title: Text("Confirmar reinício"),
+                message: Text("Tem certeza que deseja atualizar este deck? Todo o progresso será perdido."),
+                primaryButton: .destructive(Text("Reiniciar")) {
+                    viewModel.resetDeck()
+                },
+                secondaryButton: .cancel(Text("Cancelar"))
+            )
+        }
+        .sheet(isPresented: $isShowingProfileView) {
+            if authService.isAuthenticated && authService.currentUser != nil {
+                ProfileView()
+            } else {
+                LoginView()
             }
-        } message: {
-            Text("Tem certeza que deseja atualizar este deck? Todo o progresso será perdido.")
+        }
+        .sheet(isPresented: $isShowingLoginView) {
+            LoginView()
+        }
+        .onAppear {
+            print("📱 [MainView] View appeared")
+        }
+        .onChange(of: authService.isAuthenticated) { isAuthenticated in
+            print("📱 [MainView] Auth state changed: \(isAuthenticated)")
         }
     }
     
@@ -260,25 +281,33 @@ struct MainView: View {
             Spacer()
             
             Button(action: {
-                isShowingResetConfirmation = true
+                // Verifica se o usuário está autenticado
+                if authService.isAuthenticated && authService.currentUser != nil {
+                    DispatchQueue.main.async {
+                        isShowingProfileView = true
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        isShowingLoginView = true
+                    }
+                }
             }) {
-                Image(systemName: "arrow.triangle.2.circlepath")
+                Image(systemName: "person.circle")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundColor(AppTheme.textColor)
                     .frame(width: 44, height: 44)
                     .background(AppTheme.primaryColor.opacity(0.2))
                     .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                authService.isAuthenticated ? AppTheme.accentColor : Color.clear,
+                                lineWidth: 2
+                            )
+                    )
             }
         }
         .padding(.vertical, 10)
-        .alert("Confirmar atualização", isPresented: $isShowingResetConfirmation) {
-            Button("Cancelar", role: .cancel) { }
-            Button("Atualizar", role: .destructive) {
-                viewModel.resetDeck()
-            }
-        } message: {
-            Text("Tem certeza que deseja atualizar este deck? Todo o progresso será perdido.")
-        }
     }
     
     private var cardStack: some View {

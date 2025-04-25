@@ -42,10 +42,20 @@ struct DonkeyCardsApp: App {
     // Registrar o AppDelegate
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
+    // Serviço de autenticação como objeto compartilhado com a UI
+    @StateObject private var authService = AuthService.shared
+    
     init() {
+        print("📱 [App] Initializing DonkeyCards")
+        
+        // Inicializar o estado de autenticação após o AppDelegate ter configurado o Firebase
+        DispatchQueue.main.async {
+            AuthViewModel.shared.checkAuthState()
+        }
+        
         // Outras configurações iniciais aqui, se necessário
         
-        // Apenas para testes - Descomentar esta linha para resetar o tutorial
+        // Descomentar esta linha para resetar o tutorial
         UserPreferences.shared.resetPreferences()
     }
     
@@ -54,6 +64,12 @@ struct DonkeyCardsApp: App {
             MainView()
                 .preferredColorScheme(.dark) // Garantir que o app sempre seja exibido em modo escuro
                 .ignoresSafeArea()
+                .environmentObject(authService) // Disponibilizar o serviço de autenticação para toda a UI
+                .onAppear {
+                    print("📱 [App] MainView appeared, checking auth state")
+                    // Garantir que o estado de autenticação está atualizado
+                    AuthViewModel.shared.refreshUserData()
+                }
         }
     }
 }
