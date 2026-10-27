@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  DonkeyCards
 //
-//  Created by Lucas Hinova on 06/04/25.
+//  Created by Lucas Picinin on 06/04/25.
 //
 
 import SwiftUI
